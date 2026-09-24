@@ -54,24 +54,42 @@ export default function TeamDashboard() {
     window.location.href = "/";
   };
 
-  // --- ATTENDANCE SUBMISSION ---
+  // --- VALIDATED ATTENDANCE SUBMISSION ---
   const handleAttendanceSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !attendanceCode.trim()) return;
 
+    const formattedCode = attendanceCode.trim().toUpperCase();
     setIsSubmittingAttendance(true);
+
     try {
-      const { error } = await supabase.from('volunteer_attendance').insert([{
+      // 1. Check if the code exists in attendance_codes and is not expired
+      const { data: validCodes, error: codeError } = await supabase
+        .from('attendance_codes')
+        .select('*')
+        .eq('code', formattedCode)
+        .gte('expires_at', new Date().toISOString());
+
+      if (codeError) throw codeError;
+
+      if (!validCodes || validCodes.length === 0) {
+        alert("Invalid or expired secret code! Please enter the correct code provided by the Admin.");
+        setIsSubmittingAttendance(false);
+        return;
+      }
+
+      // 2. If valid, save attendance
+      const { error: insertError } = await supabase.from('volunteer_attendance').insert([{
         volunteer_name: user.fullName,
         username: user.username,
-        code_used: attendanceCode.trim().toUpperCase() // Auto uppercase for neatness
+        code_used: formattedCode
       }]);
 
-      if (error) throw error;
+      if (insertError) throw insertError;
 
-      alert("Attendance marked! Awaiting admin approval.");
+      alert("Attendance marked successfully! Awaiting admin verification.");
       setAttendanceCode(""); 
-      fetchMyAttendance(user.username); // Refresh history
+      fetchMyAttendance(user.username); 
     } catch (error: any) {
       alert("Error submitting attendance: " + error.message);
     } finally {
@@ -128,7 +146,6 @@ export default function TeamDashboard() {
 
       <div className="max-w-4xl mx-auto px-4 py-8 space-y-8">
         
-        {/* NOTIFICATIONS BANNER */}
         {notifications.length > 0 && (
           <div className="bg-blue-900/20 border border-blue-500/30 rounded-2xl p-6">
             <h3 className="text-blue-400 font-bold mb-4 flex items-center gap-2"><Megaphone className="w-5 h-5"/> Latest Announcements</h3>
@@ -143,17 +160,14 @@ export default function TeamDashboard() {
           </div>
         )}
 
-        {/* Toggle Tabs */}
         <div className="flex bg-[#0f172a] p-1 rounded-2xl w-full max-w-md mx-auto border border-slate-800">
           <button onClick={() => setActiveTab("attendance")} className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all ${activeTab === "attendance" ? "bg-slate-800 shadow-md text-blue-400" : "text-slate-500 hover:text-slate-300"}`}>Attendance</button>
           <button onClick={() => setActiveTab("contribution")} className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all ${activeTab === "contribution" ? "bg-slate-800 shadow-md text-blue-400" : "text-slate-500 hover:text-slate-300"}`}>Contribution</button>
         </div>
 
-        {/* TAB 1: ATTENDANCE */}
         {activeTab === "attendance" && (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-8">
             
-            {/* Mark Attendance Form */}
             <div className="bg-[#0f172a] p-8 rounded-3xl border border-slate-800 shadow-2xl">
               <div className="mb-6 border-b border-slate-800 pb-6 text-center">
                 <ClipboardCheck className="w-12 h-12 text-blue-500 mx-auto mb-4" />
@@ -178,7 +192,6 @@ export default function TeamDashboard() {
               </form>
             </div>
 
-            {/* Attendance History */}
             <div className="bg-[#0f172a] p-8 rounded-3xl border border-slate-800 shadow-xl">
               <h3 className="text-xl font-bold text-white mb-6">Attendance Log</h3>
               {attendanceHistory.length === 0 ? (
@@ -210,7 +223,6 @@ export default function TeamDashboard() {
           </motion.div>
         )}
 
-        {/* TAB 2: CONTRIBUTION (Kept exactly as it was) */}
         {activeTab === "contribution" && (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-8">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
